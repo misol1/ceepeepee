@@ -16,6 +16,9 @@
 #include <vector>
 #include <boost\core\demangle.hpp>
 #include <cstring>
+#include <thread>
+#include <future>
+#include <mutex>
 
 using namespace std; 
   
@@ -181,7 +184,7 @@ int main ()
 	fnoe();
 	cout << "Hehe...\n";
 
-	const int arraySize = 1920 * 1080 * 100;
+	const int arraySize = 1920 * 1080 * 10;
 	
 	// Note: Interesting, using no -O option, memset is CLEARLY the fastest! But using -O3, all four solutions are typically very similar in speed (fastest one varies)! 
 	
@@ -254,6 +257,24 @@ int main ()
 	// c++ does not have a super or base keyword (due to supporting multiple inheritance)  
 	
 	// #pragma once    : C++ way of #ifndef ME_H #define ME_H etc...
+
+	mutex m;
+
+	string sT = "";
+	auto threadFunc = [&sT,&m](const char c, const int nof) { 
+		for (int i = 0; i < nof; i++) {
+			std::scoped_lock<std::mutex> lock(m); // unlocks after each loop
+			sT = sT + c;
+		}
+	};
+
+	thread t1(threadFunc, 'x', 200);
+	thread t2(threadFunc, 'o', 200);
+	
+	t1.join();
+	t2.join();
+	
+	cout << sT << "\n";
 	
     return 0; 
 } 
