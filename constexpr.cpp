@@ -8,18 +8,26 @@
 
 // C++ 17 : constexpr if, fold expressions, init statement for if/switch, a lot of the make_pair,make_tuple etc std functions you can stop using because of template argument deduction so use normal constructors instead
 
-#include<iostream> 
-#include<chrono> 
-#include<functional> 
-#include <typeinfo>
-#include <memory>
+#include<iostream> 					// cout
+#include<chrono>   					// timing
+#include<functional>  				// std::function etc
+#include <typeinfo> 				// decltype etc
 #include <vector>
-#include <boost\core\demangle.hpp>
-#include <cstring>
+#include <boost\core\demangle.hpp>	// demangling names of decltypes
 #include <thread>
-#include <future>
+#include <future>					// future for async
 #include <mutex>
 #include <windows.h>
+#include <array>
+//#include <cstring>				// memset etc
+//#include <memory>					// unique_ptr etc
+
+//#include <execution> // for parallell execution of <algorithm>! Since C++ 17. Doesn't seem available for this g++ but available in Visual Studio :(  Supposedly at least partially supported with gcc/g++ v10+
+
+
+
+// A list of ALL std headers (in effect, links to all std:: functions/classes):
+// https://en.cppreference.com/w/cpp/header
 
 using namespace std; 
   
@@ -171,7 +179,7 @@ int main ()
 	}
 	
 	auto f = [](int a) { return 66; };
-	decltype(f) g = f; // g kommer här bli en std::function<int (int)>
+	decltype(f) g = f; // g kommer här bli typ en std::function<int (int)>
 	int n = 88;
 
 	//cout << "n has type " << typeid(n).name() << '\n'; // ummm.. NOT what I expected, the names are all mangled: n has type i     g has type Z4mainEUliE4_   . Supposedly boost (core/demangle.hpp) can be used to "demangle"
@@ -266,6 +274,8 @@ int main ()
 		for (int i = 0; i < nof; i++) {
 			{
 				std::scoped_lock<std::mutex> lock(m); // unlocks after each loop
+				//std::scoped_lock<std::mutex,std::mutex> lock(m,m2); // note that it's possible to lock many mutexes in one step, like here 
+				//whereas unique_lock only locks one but has more options
 				sT = sT + c;
 			}
 			Sleep(1);
@@ -293,6 +303,27 @@ int main ()
 	
 	auto sF = fut3.get();
 	cout << sF << "\n";
+
+
+	// Parallell execution algorithm (g++ 10+)
+	/*
+	std::array<int, 4> arr2 = { 55,66,77,88 };
+	bool algores = std::all_of(std::execution::par, arr2.begin(), arr2.end(), [](int i) { return i < 666; }); // std::execution::par (<execution> header) means parallell execution of this algo. Note, we must ensure it is thred-safe ourselves!   So DONT go adding to a vector or access shared mem without mutex in par execution.
+	*/
+	
+	
+	// C++ Patterns: the rule of 5
+	// Safely and efficiently implement RAII to encapsulate the management of dynamically allocated resources.
+	// Copy constructor, copy assignment, destructor,   move constructor, move assignment
+	// These functions are usually required only when a class is manually managing a dynamically allocated resource, and so all of them must be implemented to manage the resource safely.
+	// see https://cpppatterns.com/patterns/rule-of-five.html
+
+	// RAII types: Among others: map,memory(unique_ptr etc),vector,string.  Avoid manual memory management to improve safety and reduce bugs and memory leaks.
+
+	// Rule of 0:
+	// The rule of zero states that we can avoid writing any custom copy/move constructors, assignment operators, or destructors by using existing types that support the appropriate copy/move semantics.
+	// The class foo above does not perform any manual memory management, yet correctly supports copies and moves without any memory leaks. The defaulted copy/move constructors and assignment operators will simply copy or move each member. For the int x (line 7), this will copy its value. For v (line 8), which is a std::vector, all of its elements will be copied over.
+	// The class bar on lines 11–15 is not copyable by default because it has a std::unique_ptr member which itself is not copyable. However, it correctly supports move operations, which will transfer ownership of the dynamically allocated resource.
 	
     return 0; 
 } 
@@ -423,4 +454,83 @@ co_await (since C++20)
 co_return (since C++20)
 co_yield (since C++20)
 char8_t (since C++20)
+*/
+
+
+
+/*
+
+Scoped_lock  vs  unique_lock:
+-----------------------------
+
+The two objects are for different purposes. scoped_lock is for the simple case of wanting to lock some number of mutex objects in a deadlock-free way. Locking a single mutex is just a special case of locking multiple ones. The object is completely immobile, and it's very simple.
+
+unique_lock provides a number of features, few of which are especially applicable when simultaneously locking multiple mutexes.
+
+    Deferred locking. Deferring would have to be all or nothing; you either defer locking all the mutexes or none of them. It's not clear why you would want to defer locking a series of mutexes, since you would have to relinquish any locks that succeeded if any of them failed.
+
+    Timeout locks. If you want a timeout of 100ms, does that mean that locking all of the mutexes should take no more than 100ms? That is, if the first 3 lock immediately, but the next one takes 75ms, should it be considered a timeout if the fifth takes 30ms?
+
+    Adoption of mutexes. The whole point of locking multiple mutexes in a single operation is to be able to avoid deadlocks. This is done by locking the mutexes in an order that is globally consistent. That is, any place where you lock those mutex objects with std::lock equivalent calls will lock them in the same order, no matter what.
+
+    If one of the mutexes has already been locked (and thus the lock should be adopted), then it was locked outside of std::lock, and thus you have no guarantee that it was locked in the globally consistent order. And that ignores the difficulty of specifying which mutexes to adopt and which ones to lock.
+
+    Transfer of ownership (being moveable). This is a dubious prospect for multiple mutexes for similar reasons as adopting locks. The guarantees against deadlocks only work if a single call to std::lock or equivalent locks all of the mutexes of interest. If you're moving ownership of these scoped_locks around, it becomes very easy to be at a point in code where you have multiple scoped_locks in the same scope, when you could have locked all of them in one go. This courts the very kind of deadlock that std::lock was created to avoid.
+
+Note that std::lock (the basis of scoped_lock's functionality) doesn't even try to provide any of these features.
+
+Could there be a specialization of scoped_lock which took only one mutex type that offered the behavior of unique_lock? Sure. But that would violate the purpose of scoped_lock, which was to be a deadlock-safe locker for multiple mutexes. It only obsoleted lock_guard by accident, since it had the identical interface in the case of a single mutex.
+
+Besides, having template specializations with vastly different interfaces and capabilities doesn't usually work out well. See vector<bool> as an example.
+
+*/
+
+
+/*
+Optimization attempts, C++:
+
+1. Change to a better algorithm
+2. Compiler flags (like -O3 in g++ can make huge difference)
+3. Use inline(__forceinline) / const
+4. Use constexpr
+5. <execution> parallell algorithms in C++ 17+  AND/OR...
+6. ...Use threads(thread pool) / async
+7. Move semantics/&&
+8. Move algorithm to GPU? (experimental)
+9. Use TMP (Template Meta Programming)? (superceded by constexpr??)
+10. Data locality (used a lot in gaming). Avoid pointers/references, pack (value) data tightly in structs to minimize cache misses (that can be very costly)
+(11). Read/write less data (smaller data types). Might not always give result.
+(12) Reduce amount of copying/converting/casting between types
+(13) Decrease amount of function calls (manually rather not, use inline)
+
+Stuff not to do:
+* Oldschool stuff like replacing *16 with <<4, or manually unrolling loops. Compiler with -O3 will do these automatically, and more... Also, asm, unless very very desperate...
+*/
+
+
+
+/* TMP vs constexpr:
+
+TMP should reuse instantiation whereas constexpr function might recompute it each time. In that case TMP will compile faster.
+
+And why not replace TMP with constexpr if it is better?
+---------------------------------------------------------
+First, we won't drop TMP which is used, for retro-compatibility.
+
+Then, TMP is generally more adapted to return type or several types.
+
+template <typename T> struct add_pointer
+{
+    using type = T*;
+};
+
+using int_ptr = add_pointer<int>::type;
+
+whereas constexpr would require decltype and/or std::declval
+
+template <typename T> struct Tag { using type = T; };
+constexpr Tag<T*> add_pointer(Tag<T>) {return {}; }
+
+using int_ptr = decltype(add_pointer(Tag<int>{})::type;
+
 */
