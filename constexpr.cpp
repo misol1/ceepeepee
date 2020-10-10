@@ -19,6 +19,7 @@
 #include <thread>
 #include <future>
 #include <mutex>
+#include <windows.h>
 
 using namespace std; 
   
@@ -263,8 +264,11 @@ int main ()
 	string sT = "";
 	auto threadFunc = [&sT,&m](const char c, const int nof) { 
 		for (int i = 0; i < nof; i++) {
-			std::scoped_lock<std::mutex> lock(m); // unlocks after each loop
-			sT = sT + c;
+			{
+				std::scoped_lock<std::mutex> lock(m); // unlocks after each loop
+				sT = sT + c;
+			}
+			Sleep(1);
 		}
 	};
 
@@ -275,6 +279,20 @@ int main ()
 	t2.join();
 	
 	cout << sT << "\n";
+
+	sT = "";
+	auto fut1 = async(threadFunc, 'x', 200);
+	auto fut2 = async(threadFunc, 'o', 200);
+	
+	fut1.wait();
+	fut2.wait();
+
+	cout << sT << "\n";
+
+	auto fut3 = async([]() { string s=""; for (int i = 0; i < 200; i++) s = s + 'A'; return s; } );
+	
+	auto sF = fut3.get();
+	cout << sF << "\n";
 	
     return 0; 
 } 
