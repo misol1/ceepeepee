@@ -1,45 +1,84 @@
 
-// g++ -o constexpr.exe constexpr.cpp -static-libstdc++ -std=c++17 -ID:\Code\boost_1_66_0
+// g++ -O3 -o constexpr.exe constexpr.cpp -static-libstdc++ -std=c++17 -ID:\Code\boost_1_66_0
 
 // MinGW was taking libstd++6.dll from Windows instead of the one in MinGW
 // -std=c++17 for fold expressions
 // -ID:\Code\boost_1_66_0 to include and use Boost code (just the template/header ones, need to link to libs for some Boost stuff, for that use -L )
 
+// On Linux, assuming no boost:
+// g++ -O3 -o constexpr.exe constexpr.cpp -static-libstdc++ -std=c++17 -pthread
 
 // C++ 17 : constexpr if, fold expressions, init statement for if/switch, a lot of the make_pair,make_tuple etc std functions you can stop using because of template argument deduction so use normal constructors instead
 
-#include<iostream> 					// cout
-#include<chrono>   					// timing
-#include<functional>  				// std::function etc
+#include <iostream> 					// cout
+#include <chrono>   					// timing
+#include <functional>  				// std::function etc
 #include <typeinfo> 				// decltype etc
 #include <vector>
-#include <boost\core\demangle.hpp>	// demangling names of decltypes
 #include <thread>
 #include <future>					// future for async
 #include <mutex>
-#include <windows.h>
 #include <array>
-//#include <cstring>				// memset etc
-//#include <memory>					// unique_ptr etc
+#include <cstring>				// memset etc (seems to be included by windows.h)
+#include <memory>					// unique_ptr etc
 
-//#include <execution> // for parallell execution of <algorithm>! Since C++ 17. Doesn't seem available for this g++ but available in Visual Studio :(  Supposedly at least partially supported with gcc/g++ v10+
+//#include <execution> // for parallell execution of <algorithm>! Since C++ 17. Doesn't seem available for this g++ but available in Visual Studio.  Supposedly at least partially supported with gcc/g++ v10+
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#define USING_WIN_32
+#endif
+
+#if defined(USING_WIN_32)
+#include <windows.h>
+#include <boost\core\demangle.hpp>	// demangling names of decltypes
+#else
+// the below causes warnings when compiler is not sure it can satisfy inline forcing
+//#define __forceinline __attribute__((always_inline))
+#define __forceinline inline
+
+#include <time.h>
+#include <errno.h>
+
+/* Sleep(): Linux version of Windows Sleep, sleeps for the requested number of milliseconds. */
+/* sleep(n) sleeps for n seconds, usleep(microseconds e.g. n*1000) is deprecated, and nanosleep sleeps for nanoseconds(n*1000*1000) */
+int Sleep(long msec)
+{
+    struct timespec ts;
+    int res;
+
+    if (msec < 0)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+
+    do {
+        res = nanosleep(&ts, &ts);
+    } while (res && errno == EINTR);
+
+    return res;
+}
+
+#endif
 
 
 // A list of ALL std headers (in effect, links to all std:: functions/classes):
 // https://en.cppreference.com/w/cpp/header
 
-using namespace std; 
-  
-long int fib(int n) 
-{ 
-    return (n <= 1)? n : fib(n-1) + fib(n-2); 
-} 
+using namespace std; // don't do this in production code!
 
-constexpr long int fibCE(int n) 
-{ 
-    return (n <= 1)? n : fibCE(n-1) + fibCE(n-2); 
-} 
+long int fib(int n)
+{
+    return (n <= 1)? n : fib(n-1) + fib(n-2);
+}
+
+constexpr long int fibCE(int n)
+{
+    return (n <= 1)? n : fibCE(n-1) + fibCE(n-2);
+}
 
 
 // Instantiate a whole array of constexprs
@@ -75,7 +114,7 @@ template<typename ...T>
 void FoldPrint(T&& ... args) {
 	(cout << ... << args) << "\n"; // (init op ... op pack)
 //	(cout << args << ...) << "\n"; // Nope, cause there is no unpack like this: (init op pack op ...)
-//	(cout << ... << std::forward<T>(args)) << "\n"; // supposedly this is "better". Both "works".   *In a nutshell, forward preserves the value category of its argument. Perfect forwarding is there to ensure that the argument provided to a function is forwarded to another function (or used within the function) with the same value category (basically r-value vs. l-value) as originally provided. 
+//	(cout << ... << std::forward<T>(args)) << "\n"; // supposedly this is "better". Both "works".   *In a nutshell, forward preserves the value category of its argument. Perfect forwarding is there to ensure that the argument provided to a function is forwarded to another function (or used within the function) with the same value category (basically r-value vs. l-value) as originally provided.
 }
 
 template <typename T, typename... Args>
@@ -94,11 +133,11 @@ struct foo {
 
 foo make_foo()
 {
-	// This func is to demonstrate use if explicit for constructors. Not though that he bracket syntax makes it possible to return a foo using only "return { 42 ,42 };", no need for "return foo(42,42);" 
+	// This func is to demonstrate use if explicit for constructors. Not though that he bracket syntax makes it possible to return a foo using only "return { 42 ,42 };", no need for "return foo(42,42);"
 	// Also this func should use RVO (move semantics), so it's good, don't return by ref
 
     return { 42, 42 };
-	
+
     /* Not C++11-specific: */
     // Error: no conversion from int to foo
     //return 42;
@@ -128,6 +167,7 @@ void fnoe() noexcept { // g++ compiles, but gives warning:  warning: throw will 
 	throw 1;
 } */
 
+// __forceinline is Microsoft specific
 __forceinline void fnoe() noexcept { // no more warning since we always catch exception
 	try {
 //		throw 1;
@@ -137,8 +177,8 @@ __forceinline void fnoe() noexcept { // no more warning since we always catch ex
 	//} catch(std::exception e) { cout << "Caught it!\n"; } // this line doesn't catch the int exception, so program terminates. Warning does not show though
 }
 
-int main () 
-{ 
+int main ()
+{
 	auto timerFunc = [](auto f, std::function<void (long long)> out = nullptr) { // think I must use std::function here for arg2, since I wanted it to have nullptr as default value
 		using namespace std::chrono; // for the clocks, microseconds, duration_cast
 		auto start = high_resolution_clock::now();
@@ -147,7 +187,7 @@ int main ()
 
 		auto stop = high_resolution_clock::now();
 		auto diff = duration_cast<microseconds>(stop - start);
-		
+
 		if (out != nullptr)
 			out(diff.count());
 		else
@@ -173,11 +213,11 @@ int main ()
 	cout << sum(45, 66, 88, 109) << "\n";
 
 	FoldPrint("Hello ", "Mr ", 242, '!');
-	
+
 	if (0 and 5) { // and, bitor, or, xor, compl, bitand, and_eq, or_eq, xor_eq, not, and not_eq provide an alternative way to represent standard tokens
 		cout << "Ain't appenin'\n";
 	}
-	
+
 	auto f = [](int a) { return 66; };
 	decltype(f) g = f; // g kommer här bli typ en std::function<int (int)>
 	int n = 88;
@@ -185,18 +225,18 @@ int main ()
 	//cout << "n has type " << typeid(n).name() << '\n'; // ummm.. NOT what I expected, the names are all mangled: n has type i     g has type Z4mainEUliE4_   . Supposedly boost (core/demangle.hpp) can be used to "demangle"
 	//cout << "g has type " << typeid(g).name() << '\n';
 
-    cout << "n has type " << boost::core::demangle( typeid(n).name() ) << std::endl; // int,     main::{lambda(int)#6}    much better, still not great (return type for lambda not shown)
-	cout << "g has type " << boost::core::demangle( typeid(g).name() ) << '\n';
+//  cout << "n has type " << boost::core::demangle( typeid(n).name() ) << std::endl; // int,     main::{lambda(int)#6}    much better, still not great (return type for lambda not shown)
+//	cout << "g has type " << boost::core::demangle( typeid(g).name() ) << '\n';
 
 	foo foooo = make_foo(); // shows use of explicit
-	
+
 	fnoe();
 	cout << "Hehe...\n";
 
 	const int arraySize = 1920 * 1080 * 10;
-	
-	// Note: Interesting, using no -O option, memset is CLEARLY the fastest! But using -O3, all four solutions are typically very similar in speed (fastest one varies)! 
-	
+
+	// Note: Interesting, using no -O option, memset is CLEARLY the fastest! But using -O3, all four solutions are typically very similar in speed (fastest one varies)!
+
 	{
 		auto unique_block = make_unique<unsigned char []>(arraySize);
 		unsigned char *pBlock = unique_block.get();
@@ -236,45 +276,45 @@ int main ()
 	}
 
 
-	// algorithm std functions: 
-	
+	// algorithm std functions:
+
 	// non-modifying:  (bool) all_of, any_of, none_of    for_each/for_each_n     count/count_if   mismatch(find first elem where TWO ranges differ)  find,find_if,find_if_not   search/search_n (look for RANGE inside range)
 	//		    Also:  find_first_of(search for any of a set of elements),find_end(find the last seq of elem in range),adjacent_find(find first two items following each other that are equal or satisfy predicate)
-	
+
 	// modifying:  copy,copy_if,copy_n,copy_backward,move_backward (copy or move range to new location)   fill,fill_n   tranform(applies func to range and store in new range),  generate/generate_n(func to write to itself)
 	//				remove/remove_if   remove_copy/replace/replace_copy  reverse/rotate   shuffle(randomly reorders)  sample(select randomly among range)  unique/unique_copy (remove duplicates in range)
-	
+
 	// partitioning (one range appears before second range): is_partitioned, partition, etc
 
 	// sorting: is_sorted, sort, partial_sort, stable_sort
 	//	also: binary_search
-	
+
 	// sorted range operations:
 	//    merge. (bool)includes, set_difference,set_intersection,set_union,set_symmetric_difference
-	
+
 	// heap operations:?? permutations? (e.g. is_permutation)
-	
+
 	// min/max;  max/max_element/min/min_element/minmax/clamp
-	
+
 	// other:
 	//	std::distance (for e.g. iterators),advance,insert_iterator,move_iterator,...          swap, iter_swap, iota, accumulate, inner_product, reduce etcetc
-	
+
 	// Optimization:  std::move to force use of && overload, _forceinline
 
 
 	// Calling base class (if we have overridden it):  nameofbaseclass::method()
-	// c++ does not have a super or base keyword (due to supporting multiple inheritance)  
-	
+	// c++ does not have a super or base keyword (due to supporting multiple inheritance)
+
 	// #pragma once    : C++ way of #ifndef ME_H #define ME_H etc...
 
 	mutex m;
 
 	string sT = "";
-	auto threadFunc = [&sT,&m](const char c, const int nof) { 
+	auto threadFunc = [&sT,&m](const char c, const int nof) {
 		for (int i = 0; i < nof; i++) {
 			{
 				std::scoped_lock<std::mutex> lock(m); // unlocks after each loop
-				//std::scoped_lock<std::mutex,std::mutex> lock(m,m2); // note that it's possible to lock many mutexes in one step, like here 
+				//std::scoped_lock<std::mutex,std::mutex> lock(m,m2); // note that it's possible to lock many mutexes in one step, like here
 				//whereas unique_lock only locks one but has more options
 				sT = sT + c;
 			}
@@ -284,23 +324,23 @@ int main ()
 
 	thread t1(threadFunc, 'x', 200);
 	thread t2(threadFunc, 'o', 200);
-	
+
 	t1.join();
 	t2.join();
-	
+
 	cout << sT << "\n";
 
 	sT = "";
 	auto fut1 = async(threadFunc, 'x', 200);
 	auto fut2 = async(threadFunc, 'o', 200);
-	
+
 	fut1.wait();
 	fut2.wait();
 
 	cout << sT << "\n";
 
 	auto fut3 = async([]() { string s=""; for (int i = 0; i < 200; i++) s = s + 'A'; return s; } );
-	
+
 	auto sF = fut3.get();
 	cout << sF << "\n";
 
@@ -310,8 +350,8 @@ int main ()
 	std::array<int, 4> arr2 = { 55,66,77,88 };
 	bool algores = std::all_of(std::execution::par, arr2.begin(), arr2.end(), [](int i) { return i < 666; }); // std::execution::par (<execution> header) means parallell execution of this algo. Note, we must ensure it is thred-safe ourselves!   So DONT go adding to a vector or access shared mem without mutex in par execution.
 	*/
-	
-	
+
+
 	// C++ Patterns: the rule of 5
 	// Safely and efficiently implement RAII to encapsulate the management of dynamically allocated resources.
 	// Copy constructor, copy assignment, destructor,   move constructor, move assignment
@@ -324,9 +364,9 @@ int main ()
 	// The rule of zero states that we can avoid writing any custom copy/move constructors, assignment operators, or destructors by using existing types that support the appropriate copy/move semantics.
 	// The class foo above does not perform any manual memory management, yet correctly supports copies and moves without any memory leaks. The defaulted copy/move constructors and assignment operators will simply copy or move each member. For the int x (line 7), this will copy its value. For v (line 8), which is a std::vector, all of its elements will be copied over.
 	// The class bar on lines 11–15 is not copyable by default because it has a std::unique_ptr member which itself is not copyable. However, it correctly supports move operations, which will transfer ownership of the dynamically allocated resource.
-	
-    return 0; 
-} 
+
+    return 0;
+}
 
 
 /*
@@ -362,13 +402,13 @@ case
 catch
 char
 char16_t (since C++11)		: large enough to repr any UTF-16 code unit (what's the diff with wchar_t? Answer seems to be it's not reliable to use wchar_t because on Windows it's 16-bit and other systems it might be 32 bit)
-char32_t (since C++11)		: large enough to repr any UTF-32 code unit 
+char32_t (since C++11)		: large enough to repr any UTF-32 code unit
 class(1)
 const
 constexpr (since C++11)
 const_cast					: add or remove const from variable. Highly unrecommended.
 continue
-decltype (since C++11)		: Inspects the declared type of an entity or the type and value category of an expression. Exempel: int i = 33; decltype(i) j = i * 2;   (även j blir här en int... antar detta kan vara användbart om man inte "vet" typen, t.ex en auto?). decltype is useful when declaring types that are difficult or impossible to declare using standard notation, like lambda-related types or types that depend on template parameters. 
+decltype (since C++11)		: Inspects the declared type of an entity or the type and value category of an expression. Exempel: int i = 33; decltype(i) j = i * 2;   (även j blir här en int... antar detta kan vara användbart om man inte "vet" typen, t.ex en auto?). decltype is useful when declaring types that are difficult or impossible to declare using standard notation, like lambda-related types or types that depend on template parameters.
 default(1)					: switch default
 delete(1)
 do
@@ -388,7 +428,7 @@ if
 inline(1)					:inline is a suggestion, not guaranteed. For small mthods it should usually happen though. A method/func completely defined in a header is implicit inline. Same is true for constexpr method/func
 int
 long
-mutable(1)					:suggests that part of something that is const, is NOT const. Example: const struct { int n1; mutable int n2; } x = {0, 0};  x.n1=4; //error, x struct is const.  x.n2=4; // ok, n2 is mutable 
+mutable(1)					:suggests that part of something that is const, is NOT const. Example: const struct { int n1; mutable int n2; } x = {0, 0};  x.n1=4; //error, x struct is const.  x.n2=4; // ok, n2 is mutable
 namespace
 new
 noexcept (since C++11)		: a method/func marked noexcept promises not to throw any (unhandled) exceptions. If it still DOES throw an exception, that seems to lead to an immediate termination. Examples: void f() noexcept; // the function f() does not throw     void (*fp)() noexcept(false); // fp points to a function that may throw       void g(void pfa() noexcept);  // g takes a pointer to function that doesn't throw
@@ -412,7 +452,7 @@ switch
 synchronized (TM TS)		: TMTS, see atomic_cancel above
 template
 this
-thread_local (since C++11)	: put in front of an either global or func static variable to mean that each thread has its own copy of the variable, so it is safe to modify it (but the value can't be shared then of course) 
+thread_local (since C++11)	: put in front of an either global or func static variable to mean that each thread has its own copy of the variable, so it is safe to modify it (but the value can't be shared then of course)
 throw
 true
 try
@@ -422,7 +462,7 @@ typename
 union
 unsigned
 using(1)					: Many uses, like: using namespace std; (to include whole namespace), or using namespace std::chrono; (to only include Chrono), or using std::vector to specifically allow using vector keyword without std.  Or using namespace MyShit.  Or as an alias, a more C++ typedef, e.g: using UPtrMapSS = std::unique_ptr<std::unordered_map<std::string, std::string>>;  now can use UPtrMapSS instead of long name.
-virtual						: A virtual method can be overriden. A virtual =0 method is "pure virtual" and creates an abstract class. If you inherit a class with the virtual keyword (instead of just private or public), it means that "grandchildren will not inherit twice"... umm.. basically a way to fix multiple inheritance issues. If both B and C derives from A, and then we make D inherit from BOTH B and C, then it will have two instances of A, including all its variables, methods etc, which is a mess to use cause you need to specify if it's B::A or C::A you use. But if B and C inherits virtual from A, then this problem goes away cause D only gets single A instance  
+virtual						: A virtual method can be overriden. A virtual =0 method is "pure virtual" and creates an abstract class. If you inherit a class with the virtual keyword (instead of just private or public), it means that "grandchildren will not inherit twice"... umm.. basically a way to fix multiple inheritance issues. If both B and C derives from A, and then we make D inherit from BOTH B and C, then it will have two instances of A, including all its variables, methods etc, which is a mess to use cause you need to specify if it's B::A or C::A you use. But if B and C inherits virtual from A, then this problem goes away cause D only gets single A instance
 void
 volatile					: a variable marked volatile says to compiler "do not optimize away this variable ever". A volatile is NOT thread safe by itself, use locks
 wchar_t						: same as char16_t on Windows, but same as char32_t on other systems... Conclusion is to probably avoid this, unless coding for single platform only.
@@ -430,7 +470,7 @@ while
 
 In addition to keywords, there are identifiers with special meaning, which may be used as names of objects or functions, but have special meaning in certain contexts.
 
-final (C++11)				: put in after class/struct to make it impossible to derive from, e.g. struct A final {},  or struct B final : A {} to inherit but allow no further subclasses. Also, an implementation of an overriden method can be marked final to allow no further overrides, e.g. "void foo() final;" assuming we are overriding "virtual void foo();" in base class.  
+final (C++11)				: put in after class/struct to make it impossible to derive from, e.g. struct A final {},  or struct B final : A {} to inherit but allow no further subclasses. Also, an implementation of an overriden method can be marked final to allow no further overrides, e.g. "void foo() final;" assuming we are overriding "virtual void foo();" in base class.
 
 override (C++11)			: you don't have to write this to override a virtual method in C++, BUT it makes the interface clearer, AND perhaps more importantly compiler will warn if base class method is NOT virtual (to avoid hiding). Also helps if we accidentally put e.g const somewhere on our overriding method which was not on base class, compiler will then complain it is NOT the same and we are NOT overriding.
 
@@ -439,11 +479,11 @@ transaction_safe_dynamic (TM TS)
 
     (1) - meaning changed or new meaning added in C++11.
     (2) - meaning changed in C++17.
-    (3) - meaning changed in C++20. 
+    (3) - meaning changed in C++20.
 
 Note that and, bitor, or, xor, compl, bitand, and_eq, or_eq, xor_eq, not, and not_eq (along with the digraphs <%, %>, <:, :>, %:, and %:%:) provide an alternative way to represent standard tokens.
 
-Also, all identifiers that contain a double underscore __ in any position and each identifier that begins with an underscore followed by an uppercase letter is always reserved and all identifiers that begin with an underscore are reserved for use as names in the global namespace. See identifiers for more details. 
+Also, all identifiers that contain a double underscore __ in any position and each identifier that begins with an underscore followed by an uppercase letter is always reserved and all identifiers that begin with an underscore are reserved for use as names in the global namespace. See identifiers for more details.
 
 New C++ 20 keywords:
 concept (since C++20)
