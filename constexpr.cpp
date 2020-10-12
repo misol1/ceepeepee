@@ -94,7 +94,7 @@ struct foo {
 
 foo make_foo()
 {
-	// This func is to demonstrate use if explicit for constructors. Not though that he bracket syntax makes it possible to return a foo using only "return { 42 ,42 };", no need for "return foo(42,42);" 
+	// This func is to demonstrate use of "explicit" for constructors. Note though that the bracket syntax makes it possible to return a foo using only "return { 42 ,42 };", no need for "return foo(42,42);" 
 	// Also this func should use RVO (move semantics), so it's good, don't return by ref
 
     return { 42, 42 };
@@ -195,8 +195,7 @@ int main ()
 
 	const int arraySize = 1920 * 1080 * 10;
 	
-	// Note: Interesting, using no -O option, memset is CLEARLY the fastest! But using -O3, all four solutions are typically very similar in speed (fastest one varies)! 
-	
+	// Note: Interesting, using no -O option, memset is CLEARLY the fastest! But using -O3, all four solutions are typically very similar in speed (fastest one varies)! Wouuld be interesting to try execution::par
 	{
 		auto unique_block = make_unique<unsigned char []>(arraySize);
 		unsigned char *pBlock = unique_block.get();
@@ -274,7 +273,7 @@ int main ()
 		for (int i = 0; i < nof; i++) {
 			{
 				std::scoped_lock<std::mutex> lock(m); // unlocks after each loop
-				//std::scoped_lock<std::mutex,std::mutex> lock(m,m2); // note that it's possible to lock many mutexes in one step, like here 
+				//std::scoped_lock<std::mutex,std::mutex> lock(m,m2); // note that scoped_lock can lock many mutexes in one step, like here 
 				//whereas unique_lock only locks one but has more options
 				sT = sT + c;
 			}
@@ -317,6 +316,7 @@ int main ()
 	// Copy constructor, copy assignment, destructor,   move constructor, move assignment
 	// These functions are usually required only when a class is manually managing a dynamically allocated resource, and so all of them must be implemented to manage the resource safely.
 	// see https://cpppatterns.com/patterns/rule-of-five.html
+	// If a class uses only RAII resources (vector etc) the class itself will be RAII.
 
 	// RAII types: Among others: map,memory(unique_ptr etc),vector,string.  Avoid manual memory management to improve safety and reduce bugs and memory leaks.
 
@@ -489,6 +489,7 @@ Besides, having template specializations with vastly different interfaces and ca
 /*
 Optimization attempts, C++:
 
+(0. Profile!)
 1. Change to a better algorithm
 2. Compiler flags (like -O3 in g++ can make huge difference)
 3. Use inline(__forceinline) / const
@@ -497,7 +498,7 @@ Optimization attempts, C++:
 6. ...Use threads(thread pool) / async
 7. Move semantics/&&
 8. Move algorithm to GPU? (experimental)
-9. Use TMP (Template Meta Programming)? (superceded by constexpr??)
+9. Use TMP (Template Meta Programming)? (superseded by constexpr??)
 10. Data locality (used a lot in gaming). Avoid pointers/references, pack (value) data tightly in structs to minimize cache misses (that can be very costly)
 (11). Read/write less data (smaller data types). Might not always give result.
 (12) Reduce amount of copying/converting/casting between types
