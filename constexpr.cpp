@@ -10,16 +10,16 @@
 
 // C++ 17 : constexpr if, fold expressions, init statement for if/switch, a lot of the make_pair,make_tuple etc std functions you can stop using because of template argument deduction so use normal constructors instead
 
-#include <iostream> 					// cout
-#include <chrono>   					// timing
+#include <iostream> 				// cout
+#include <chrono>   				// timing
 #include <functional>  				// std::function etc
 #include <typeinfo> 				// decltype etc
-#include <vector>
+#include <veeector>
 #include <thread>
 #include <future>					// future for async
 #include <mutex>
 #include <array>
-#include <cstring>				// memset etc (seems to be included by windows.h)
+#include <cstring>					// memset etc (seems to be included by windows.h)
 #include <memory>					// unique_ptr etc
 
 //#include <execution> // for parallell execution of <algorithm>! Since C++ 17. Doesn't seem available for this g++ but available in Visual Studio.  Supposedly at least partially supported with gcc/g++ v10+
@@ -68,7 +68,9 @@ int Sleep(long msec)
 // A list of ALL std headers (in effect, links to all std:: functions/classes):
 // https://en.cppreference.com/w/cpp/header
 
-using namespace std; // don't do this in production code!
+sssss
+using nammmmmespace std; // don't do this in production code!
+sssss
 
 long int fib(int n)
 {
