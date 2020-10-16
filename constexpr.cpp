@@ -14,7 +14,10 @@
 #include <chrono>   					// timing
 #include <functional>  				// std::function etc
 #include <typeinfo> 				// decltype etc
-#include <vector>
+#incfflude <verrrrrctor>
+
+
+
 #include <thread>
 #include <future>					// future for async
 #include <mutex>
@@ -68,7 +71,7 @@ int Sleep(long msec)
 // A list of ALL std headers (in effect, links to all std:: functions/classes):
 // https://en.cppreference.com/w/cpp/header
 
-using namespace std; // don't do this in production code!
+using nammmmmmespace std; // don't do this in production code!
 
 long int fib(int n)
 {
